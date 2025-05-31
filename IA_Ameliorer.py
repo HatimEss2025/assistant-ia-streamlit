@@ -1,3 +1,4 @@
+""
 import os
 import json
 import pandas as pd
@@ -36,9 +37,9 @@ if not OPENAI_API_KEY:
 dataframes_excels = {}
 MAX_CHARS = 50000
 
-def lire_contenu_fichier(uploaded_file):
+def lire_contenu_fichier(uploaded_file, nom=None):
     try:
-        nom = uploaded_file.name
+        nom = nom or uploaded_file.name
         if nom.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
             dataframes_excels[nom] = df
@@ -68,6 +69,25 @@ def lire_contenu_fichier(uploaded_file):
         return contenu
     except Exception as e:
         return f"Erreur de lecture : {e}"
+
+# Lecture récursive locale
+
+def charger_fichiers_recursif(dossier):
+    documents = []
+    for racine, _, fichiers in os.walk(dossier):
+        for fichier in fichiers:
+            chemin = os.path.join(racine, fichier)
+            try:
+                with open(chemin, "rb") as f:
+                    contenu = lire_contenu_fichier(f, nom=fichier)
+                    if contenu:
+                        documents.append(Document(
+                            page_content=f"Nom du fichier : {fichier}\n\n{contenu}",
+                            metadata={"source": chemin}
+                        ))
+            except Exception as e:
+                st.warning(f"Erreur avec {chemin} : {e}")
+    return documents
 
 # -------------------------
 # Analyse IA
@@ -102,6 +122,7 @@ st.set_page_config(page_title="Assistant IA", page_icon="🧠")
 st.title(" 🧠 Assistant IA – Analyse de fichiers")
 
 uploaded_files = st.file_uploader("📁 Importez vos fichiers", type=["csv", "xlsx", "txt", "pdf", "docx", "json", "html"], accept_multiple_files=True)
+chemin_local = st.text_input("📂 Ou entrez le chemin d'un dossier local à indexer :")
 
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
@@ -110,18 +131,25 @@ if "historique" not in st.session_state:
 if "archives" not in st.session_state:
     st.session_state.archives = []
 
+# Traitement des fichiers
 if uploaded_files:
-    with st.spinner("📄 Lecture et indexation des documents..."):
-        documents = []
-        for f in uploaded_files:
-            contenu = lire_contenu_fichier(f)
-            if contenu:
-                documents.append(Document(page_content=f"Nom du fichier : {f.name}\n\n{contenu}", metadata={"source": f.name}))
+    documents = []
+    for f in uploaded_files:
+        contenu = lire_contenu_fichier(f)
+        if contenu:
+            documents.append(Document(page_content=f"Nom du fichier : {f.name}\n\n{contenu}", metadata={"source": f.name}))
+    if documents:
+        st.session_state.qa_chain = creer_qa_conversation(documents)
+        st.success("✅ Fichiers téléversés traités")
+
+elif chemin_local and os.path.isdir(chemin_local):
+    with st.spinner("📄 Indexation du dossier..."):
+        documents = charger_fichiers_recursif(chemin_local)
         if documents:
             st.session_state.qa_chain = creer_qa_conversation(documents)
-            st.success("✅ Fichiers traités et indexés avec succès")
+            st.success("✅ Fichiers du dossier chargés et indexés")
         else:
-            st.error("❌ Aucun contenu valide n'a été trouvé.")
+            st.error("❌ Aucun fichier valide trouvé dans ce dossier.")
 
 # Bouton pour nouveau chat
 if st.button("🔄 Nouveau chat"):
@@ -130,7 +158,6 @@ if st.button("🔄 Nouveau chat"):
         st.session_state.historique = []
         st.success("🗃️ Ancien chat archivé et nouveau chat démarré.")
 
-# Affichage de l'interface de chat
 if st.session_state.qa_chain:
     with st.form("formulaire_question", clear_on_submit=True):
         question = st.text_input("💬 Posez votre question sur les fichiers :")
@@ -155,7 +182,6 @@ if st.session_state.qa_chain:
             reponse = chain.run(data=extrait_csv, question=question)
             st.session_state.historique.append((question, reponse))
 
-            # Suggestions de questions
             suggestion_prompt = PromptTemplate.from_template(
                 "Tu es un assistant. Voici une réponse :\n{reponse}\n\nSuggère 3 questions pertinentes que l'utilisateur pourrait poser ensuite."
             )
@@ -182,3 +208,4 @@ if st.session_state.archives:
                 st.markdown(f"**🗣️ Vous :** {q}")
                 st.markdown(f"**🤖 IA :** {r}")
                 st.markdown("---")
+""
