@@ -1,4 +1,3 @@
-""
 import os
 import json
 import pandas as pd
@@ -122,7 +121,10 @@ st.set_page_config(page_title="Assistant IA", page_icon="🧠")
 st.title(" 🧠 Assistant IA – Analyse de fichiers")
 
 uploaded_files = st.file_uploader("📁 Importez vos fichiers", type=["csv", "xlsx", "txt", "pdf", "docx", "json", "html"], accept_multiple_files=True)
-chemin_local = st.text_input("📂 Ou entrez le chemin d'un dossier local à indexer :")
+
+with st.form("formulaire_dossier"):
+    chemin_local = st.text_input("📂 Ou entrez le chemin d'un dossier local à indexer :")
+    valider_dossier = st.form_submit_button("📥 Charger le dossier")
 
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
@@ -142,7 +144,7 @@ if uploaded_files:
         st.session_state.qa_chain = creer_qa_conversation(documents)
         st.success("✅ Fichiers téléversés traités")
 
-elif chemin_local and os.path.isdir(chemin_local):
+elif valider_dossier and os.path.isdir(chemin_local):
     with st.spinner("📄 Indexation du dossier..."):
         documents = charger_fichiers_recursif(chemin_local)
         if documents:
@@ -208,4 +210,3 @@ if st.session_state.archives:
                 st.markdown(f"**🗣️ Vous :** {q}")
                 st.markdown(f"**🤖 IA :** {r}")
                 st.markdown("---")
-""
