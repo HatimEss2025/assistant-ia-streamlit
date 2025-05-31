@@ -1,0 +1,15 @@
+streamlit
+openai
+langchain
+langchain-community
+faiss-cpu
+tiktoken
+PyPDF2
+python-docx
+docx2txt
+pandas
+openpyxl
+beautifulsoup4
+python-dotenv
+streamlit-tree-select
+langchain-openai
