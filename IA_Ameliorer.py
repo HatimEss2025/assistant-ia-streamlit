@@ -14,9 +14,11 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import ConversationalRetrievalChain, LLMChain
 from langchain.memory import ConversationBufferMemory
 from langchain.docstore.document import Document
+from langchain.prompts import PromptTemplate
+import io
 
 # -------------------------
 # Initialisation et config
@@ -97,7 +99,7 @@ def creer_qa_conversation(documents):
 # Interface Streamlit
 # -------------------------
 st.set_page_config(page_title="Assistant IA", page_icon="🧠")
-st.title(" 🧠 Assistant IA – Analyse de fichiers Excel/CSV")
+st.title(" 🧠 Assistant IA – Analyse de fichiers")
 
 uploaded_files = st.file_uploader("📁 Importez vos fichiers", type=["csv", "xlsx", "txt", "pdf", "docx", "json", "html"], accept_multiple_files=True)
 
@@ -105,6 +107,8 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 if "historique" not in st.session_state:
     st.session_state.historique = []
+if "archives" not in st.session_state:
+    st.session_state.archives = []
 
 if uploaded_files:
     with st.spinner("📄 Lecture et indexation des documents..."):
@@ -119,6 +123,14 @@ if uploaded_files:
         else:
             st.error("❌ Aucun contenu valide n'a été trouvé.")
 
+# Bouton pour nouveau chat
+if st.button("🔄 Nouveau chat"):
+    if st.session_state.historique:
+        st.session_state.archives.append(list(st.session_state.historique))
+        st.session_state.historique = []
+        st.success("🗃️ Ancien chat archivé et nouveau chat démarré.")
+
+# Affichage de l'interface de chat
 if st.session_state.qa_chain:
     with st.form("formulaire_question", clear_on_submit=True):
         question = st.text_input("💬 Posez votre question sur les fichiers :")
@@ -126,10 +138,6 @@ if st.session_state.qa_chain:
 
     if submit and question:
         with st.spinner("🤖 Traitement par l'IA..."):
-            import io
-            from langchain.chains import LLMChain
-            from langchain.prompts import PromptTemplate
-
             extrait_csv = ""
             for df in dataframes_excels.values():
                 buffer = io.StringIO()
@@ -137,7 +145,7 @@ if st.session_state.qa_chain:
                 extrait_csv += buffer.getvalue() + "\n"
 
             prompt = PromptTemplate.from_template(
-                "Voici un extrait des fichiers Excel/CSV chargés :\n{data}\n\nQuestion : {question}"
+                "Voici un extrait des fichiers :\n{data}\n\nQuestion : {question}"
             )
 
             chain = LLMChain(
@@ -147,9 +155,30 @@ if st.session_state.qa_chain:
             reponse = chain.run(data=extrait_csv, question=question)
             st.session_state.historique.append((question, reponse))
 
+            # Suggestions de questions
+            suggestion_prompt = PromptTemplate.from_template(
+                "Tu es un assistant. Voici une réponse :\n{reponse}\n\nSuggère 3 questions pertinentes que l'utilisateur pourrait poser ensuite."
+            )
+            suggestion_chain = LLMChain(
+                llm=ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY),
+                prompt=suggestion_prompt
+            )
+            suggestions = suggestion_chain.run(reponse=reponse)
+            st.markdown("### 💡 Suggestions de questions :")
+            st.markdown(suggestions)
+
 if st.session_state.historique:
     st.markdown("### 📜 Historique")
     for q, r in reversed(st.session_state.historique):
         st.markdown(f"**🗣️ Vous :** {q}")
         st.markdown(f"**🤖 IA :** {r}")
         st.markdown("---")
+
+if st.session_state.archives:
+    st.markdown("### 📂 Archives de conversations précédentes")
+    for idx, hist in enumerate(reversed(st.session_state.archives)):
+        with st.expander(f"Chat précédent #{len(st.session_state.archives) - idx}"):
+            for q, r in hist:
+                st.markdown(f"**🗣️ Vous :** {q}")
+                st.markdown(f"**🤖 IA :** {r}")
+                st.markdown("---")
